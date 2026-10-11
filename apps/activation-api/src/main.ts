@@ -1,14 +1,39 @@
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
+import { MicroserviceOptions, Transport } from "@nestjs/microservices";
 import { AppModule } from "./app.module";
-import { appConfig } from "./config/env.config";
+import { appConfig, kafkaConfig } from "./config/env.config";
+import { TOPICS } from "@activation-poc/contracts";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const configService = app.get(appConfig.KEY);
   const port = configService.port;
+
+  const kafkaOptions: MicroserviceOptions = {
+    transport: Transport.KAFKA,
+    options: {
+      client: {
+        clientId: kafkaConfig().clientId,
+        brokers: kafkaConfig().brokers,
+      },
+      consumer: {
+        groupId: kafkaConfig().groupId,
+        allowAutoCreateTopics: false,
+        sessionTimeout: 30000,
+        heartbeatInterval: 10000,
+      },
+      subscribe: {
+        fromBeginning: false,
+        topics: [TOPICS.BILLING_EVENTS, TOPICS.PROVISIONING_EVENTS],
+      },
+    },
+  };
+
+  app.connectMicroservice<MicroserviceOptions>(kafkaOptions);
+  await app.startAllMicroservices();
 
   app.enableCors();
   app.useGlobalPipes(

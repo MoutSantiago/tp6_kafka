@@ -40,6 +40,33 @@ export class KafkaProducerService implements OnModuleInit {
     );
   }
 
+  async publishActivationCompleted(
+    correlationId: string,
+    customerId: string,
+    planId: string,
+  ): Promise<void> {
+    const event = createEvent<{ planId: string }>(
+      EVENT_TYPES.ACTIVATION_COMPLETED,
+      { planId },
+      {
+        correlationId,
+        customerId,
+        source: 'activation-api',
+      },
+    );
+
+    await firstValueFrom(
+      this.client.emit(TOPICS.ACTIVATION_EVENTS, {
+        key: customerId,
+        value: event,
+        headers: {
+          correlationId,
+          eventType: EVENT_TYPES.ACTIVATION_COMPLETED,
+        },
+      }),
+    );
+  }
+
   async publish<T extends EventEnvelope<unknown>>(
     topic: string,
     key: string,
