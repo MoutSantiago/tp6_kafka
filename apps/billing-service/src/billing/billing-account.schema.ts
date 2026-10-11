@@ -21,6 +21,9 @@ export class BillingAccount {
 
   @Prop({ type: String, enum: ['CREATED', 'CANCELLED'], default: 'CREATED' })
   status!: BillingAccountStatus;
+
+  @Prop({ type: String, default: '' })
+  cancelReason!: string;
 }
 
 export const BillingAccountSchema = SchemaFactory.createForClass(BillingAccount);

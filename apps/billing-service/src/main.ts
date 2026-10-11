@@ -23,7 +23,7 @@ async function bootstrap() {
       },
       subscribe: {
         fromBeginning: false,
-        topics: [TOPICS.ACTIVATION_REQUESTED],
+        topics: [TOPICS.ACTIVATION_REQUESTED, TOPICS.ACTIVATION_EVENTS],
       },
     },
   };
