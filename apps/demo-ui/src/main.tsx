@@ -1,5 +1,10 @@
+import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { App } from './App';
+import './styles.css';
 
-const App = () => <div>Activation POC Demo UI</div>;
-
-ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
