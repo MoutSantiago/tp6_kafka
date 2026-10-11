@@ -1,66 +1,50 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import { EventPattern, Payload, Ctx, KafkaContext } from '@nestjs/microservices';
 import { BillingAccount, BillingAccountDocument } from './billing-account.schema';
 import { KafkaProducerService } from '../kafka/kafka-producer.service';
-import { EVENT_TYPES, TOPICS } from '@activation-poc/contracts';
-import type { EventEnvelope, ActivationRequestedPayload } from '@activation-poc/contracts';
-
-type ActivationRequestedEvent = EventEnvelope<ActivationRequestedPayload>;
+import type { ActivationRequestedEvent } from '@activation-poc/contracts';
 
 @Injectable()
-export class BillingService implements OnModuleInit {
+export class BillingService {
   private readonly logger = new Logger(BillingService.name);
 
   constructor(
-    @InjectModel(BillingAccount.name) private readonly billingAccountModel: Model<BillingAccountDocument>,
+    @InjectModel(BillingAccount.name)
+    private readonly billingAccountModel: Model<BillingAccountDocument>,
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    this.logger.log('BillingService initialized');
-  }
+  async handleActivationRequested(event: ActivationRequestedEvent): Promise<void> {
+    const { correlationId, customerId } = event;
+    const { planId } = event.payload;
 
-  @EventPattern(TOPICS.ACTIVATION_REQUESTED)
-  async handleActivationRequested(
-    @Payload() event: ActivationRequestedEvent,
-    @Ctx() context: KafkaContext,
-  ): Promise<void> {
-    const payload = event.payload;
-    const correlationId = event.correlationId;
-    const customerId = event.customerId;
-    const eventId = event.eventId;
-
-    this.logger.log(`Processing ActivationRequested for correlationId: ${correlationId}, customerId: ${customerId}, eventId: ${eventId}`);
-
-    const existingAccount = await this.billingAccountModel.findOne({ activationId: correlationId }).exec();
-    if (existingAccount) {
-      this.logger.log(`Billing account already exists for activationId: ${correlationId}, skipping`);
-      return;
-    }
+    this.logger.log(
+      `Processing ActivationRequested for correlationId: ${correlationId}, customerId: ${customerId}`,
+    );
 
     const accountId = `acc-${uuidv4().slice(0, 8)}`;
 
-    const billingAccount = new this.billingAccountModel({
-      _id: `ba-${uuidv4().slice(0, 8)}`,
+    await this.billingAccountModel.create({
       activationId: correlationId,
       customerId,
-      planId: payload.planId,
+      planId,
       accountId,
       status: 'CREATED',
     });
-
-    await billingAccount.save();
-    this.logger.log(`Created billing account ${accountId} for activation ${correlationId}`);
+    this.logger.log(
+      `Created billing account ${accountId} for activation ${correlationId}`,
+    );
 
     await this.kafkaProducer.publishBillingAccountCreated(
       correlationId,
       customerId,
       accountId,
-      payload.planId,
+      planId,
     );
-    this.logger.log(`Published BillingAccountCreated for correlationId: ${correlationId}`);
+    this.logger.log(
+      `Published BillingAccountCreated for correlationId: ${correlationId}`,
+    );
   }
 }

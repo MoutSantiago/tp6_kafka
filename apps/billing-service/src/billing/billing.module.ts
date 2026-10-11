@@ -1,18 +1,16 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { BillingAccount, BillingAccountSchema } from '../billing/billing-account.schema';
-import { ProcessedEvent, ProcessedEventSchema } from '../schemas/processed-event.schema';
-import { BillingConsumerService } from '../billing/billing-consumer.service';
-import { KafkaProducerService } from '../kafka/kafka-producer.service';
+import { BillingAccount, BillingAccountSchema } from './billing-account.schema';
+import { BillingService } from './billing.service';
+import { BillingController } from './billing.controller';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: BillingAccount.name, schema: BillingAccountSchema },
-      { name: 'ProcessedEvent', schema: ProcessedEventSchema },
     ]),
   ],
-  providers: [BillingConsumerService, KafkaProducerService],
-  exports: [KafkaProducerService],
+  controllers: [BillingController],
+  providers: [BillingService],
 })
 export class BillingModule {}
