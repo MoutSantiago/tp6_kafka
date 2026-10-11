@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Prueba WebSocket - Activaciones</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    fieldset { margin-bottom: 1rem; }
+    input, button, select { padding: .4rem; margin: .2rem; }
+    #estado { font-weight: bold; }
+    #log { border: 1px solid #ccc; padding: .5rem; min-height: 12rem; height: 20rem; overflow-y: auto; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; background: #fafafa; }
+    .row { display: flex; align-items: center; gap: .5rem; }
+    .error { color: #b00; }
+  </style>
+</head>
+<body>
+  <h1>Timeline de activaciones (WebSocket)</h1>
+  <p>Servidor: <code>http://localhost:3000</code> (activation-api levantado con <code>node dist/main.js</code>)</p>
+
+  <fieldset>
+    <legend>Conexión</legend>
+    <div class="row">
+      <span id="estado" class="error">sin conectar</span>
+      <button id="btnConectar">Conectar</button>
+      <button id="btnTodos">Suscribirse a TODAS</button>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Nueva activación</legend>
+    <input id="customerId" placeholder="customerId" value="C-demo" />
+    <input id="planId" placeholder="planId" value="PLAN DEMO" />
+    <select id="simulateFailure">
+      <option value="none">sin fallo</option>
+      <option value="billing">fallo billing</option>
+      <option value="provisioning">fallo provisioning</option>
+    </select>
+    <button id="btnCrear">Crear activación</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Suscripción a una activación</legend>
+    <input id="activationId" placeholder="act-xxxxxxxx" style="width: 12rem" />
+    <button id="btnSuscribir">Suscribirse</button>
+  </fieldset>
+
+  <div id="log"></div>
+
+  <script>
+    const estado = document.getElementById('estado');
+    const log = (msg) => {
+      const el = document.getElementById('log');
+      el.textContent += msg + "\n";
+      el.scrollTop = el.scrollHeight;
+    };
+
+    // Carga dinámica con reintentos: activation-api tarda unos segundos en arrancar
+    // (Mongo/Kafka) antes de servir /socket.io/socket.io.js, y una <script src> fija
+    // fallaría si se abre la página antes. Reintentamos hasta que esté disponible.
+    function iniciarApps(loaded) {
+      if (loaded) { iniciar(); return; }
+      estado.textContent = 'esperando al servidor (cargando socket.io)...';
+      estado.classList.remove('error');
+      const s = document.createElement('script');
+      s.src = 'http://localhost:3000/socket.io/socket.io.js?_=' + Date.now();
+      s.onload = () => iniciarApps(true);
+      s.onerror = () => setTimeout(() => iniciarApps(false), 2000);
+      document.head.appendChild(s);
+    }
+    iniciarApps(typeof io !== 'undefined');
+
+    function iniciar() {
+      estado.textContent = 'sin conectar';
+
+      const socket = io('http://localhost:3000', { autoConnect: false });
+
+      socket.on('connect', () => {
+        estado.textContent = 'conectado (' + socket.id + ')';
+        estado.classList.remove('error');
+        log('WS conectado');
+      });
+      socket.on('connect_error', (err) => {
+        estado.textContent = 'error de conexión: ' + err.message;
+        estado.classList.add('error');
+        log('ERROR de conexión: ' + err.message);
+      });
+      socket.on('disconnect', () => {
+        estado.textContent = 'desconectado';
+        estado.classList.add('error');
+        log('WS desconectado');
+      });
+      socket.on('activation-event', (msg) => {
+        log(`[${msg.at}] ${msg.activationId} :: ${msg.eventType} -> ${msg.status}`);
+      });
+
+      document.getElementById('btnConectar').onclick = () => {
+        log('conectando a ws://localhost:3000 ...');
+        socket.connect();
+      };
+      document.getElementById('btnTodos').onclick = () =>
+        socket.emit('subscribe', {}, (ack) => log('suscripto a: ' + ack.subscribed));
+      document.getElementById('btnSuscribir').onclick = () => {
+        const id = document.getElementById('activationId').value.trim();
+        if (id) {
+          socket.emit('subscribe', { activationId: id }, (ack) => log('suscripto a: ' + ack.subscribed));
+        } else {
+          log('ingresá un activationId primero');
+        }
+      };
+      document.getElementById('btnCrear').onclick = async () => {
+        try {
+          const res = await fetch('http://localhost:3000/activations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customerId: document.getElementById('customerId').value,
+              planId: document.getElementById('planId').value,
+              simulateFailure: document.getElementById('simulateFailure').value,
+            }),
+          });
+          const data = await res.json();
+          document.getElementById('activationId').value = data.activationId;
+          log(`activación creada: ${data.activationId}`);
+        } catch (err) {
+          log('ERROR creando activación: ' + err.message);
+        }
+      };
+    }
+  </script>
+</body>
+</html>

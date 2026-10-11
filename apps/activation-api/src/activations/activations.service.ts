@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Activation, ActivationDocument, ActivationStatus, HistoryEntry } from './activation.schema';
 import { CreateActivationDto } from './dto/activation.dto';
 import { KafkaProducerService } from '../kafka/kafka-producer.service';
+import { ActivationsGateway } from './activations.gateway';
 import type {
   BillingAccountCreatedEvent,
   BillingFailedEvent,
@@ -17,6 +18,7 @@ export class ActivationsService {
   constructor(
     @InjectModel(Activation.name) private readonly activationModel: Model<ActivationDocument>,
     private readonly kafkaProducer: KafkaProducerService,
+    private readonly gateway: ActivationsGateway,
   ) {}
 
   async create(dto: CreateActivationDto): Promise<{ activationId: string; status: ActivationStatus }> {
@@ -45,6 +47,13 @@ export class ActivationsService {
     });
 
     await activation.save();
+
+    this.gateway.emitActivationEvent({
+      activationId,
+      eventType: 'ActivationRequested',
+      at: now,
+      status: 'PENDING',
+    });
 
     await this.kafkaProducer.publishActivationRequested(
       activationId,
@@ -164,6 +173,15 @@ export class ActivationsService {
       return;
     }
 
+    // Emitir por WebSocket el mismo evento que quedó en history, con el estado resultante.
+    // Resultados que llegan después de un estado terminal se emiten con ese mismo estado.
+    this.gateway.emitActivationEvent({
+      activationId,
+      eventType: historyEntry.eventType,
+      at: now,
+      status: updated.status,
+    });
+
     if (stepResult === 'FAILED') {
       // Primer fallo: solo un consumidor concurrente puede ganar esta transición porque
       // el filtro exige un estado no terminal. Mongo aplica cada findOneAndUpdate de forma
@@ -188,6 +206,12 @@ export class ActivationsService {
         .exec();
 
       if (failed) {
+        this.gateway.emitActivationEvent({
+          activationId,
+          eventType: 'ActivationFailed',
+          at: now,
+          status: 'FAILED',
+        });
         await this.kafkaProducer.publishActivationFailed(
           activationId,
           customerId,
@@ -241,6 +265,12 @@ export class ActivationsService {
       .exec();
 
     if (completed) {
+      this.gateway.emitActivationEvent({
+        activationId,
+        eventType: 'ActivationCompleted',
+        at: now,
+        status: 'ACTIVE',
+      });
       await this.kafkaProducer.publishActivationCompleted(
         activationId,
         customerId,
