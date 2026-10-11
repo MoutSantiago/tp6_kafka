@@ -31,6 +31,25 @@ export class ProvisioningService {
     const orderId = `ord-${uuidv4().slice(0, 8)}`;
     const lineId = `line-${uuidv4().slice(0, 8)}`;
 
+    // Fallo de negocio simulado: no es un error técnico. No se crea la orden y se
+    // publica ProvisioningFailed como resultado de negocio en provisioning.events.
+    if (event.simulateFailure === 'provisioning') {
+      const reason = 'Fallo simulado en provisioning';
+      this.logger.warn(
+        `Simulated provisioning failure for activation ${correlationId}`,
+      );
+      await this.kafkaProducer.publishProvisioningFailed(
+        correlationId,
+        customerId,
+        orderId,
+        reason,
+      );
+      this.logger.log(
+        `Published ProvisioningFailed for correlationId: ${correlationId}`,
+      );
+      return;
+    }
+
     await this.provisioningOrderModel.create({
       activationId: correlationId,
       customerId,

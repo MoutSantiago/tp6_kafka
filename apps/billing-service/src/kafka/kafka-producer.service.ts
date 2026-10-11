@@ -50,6 +50,34 @@ export class KafkaProducerService implements OnModuleInit {
     );
   }
 
+  async publishBillingFailed(
+    correlationId: string,
+    customerId: string,
+    reason: string,
+    planId: string,
+  ): Promise<void> {
+    const event = createEvent<{ reason: string; planId: string }>(
+      EVENT_TYPES.BILLING_FAILED,
+      { reason, planId },
+      {
+        correlationId,
+        customerId,
+        source: 'billing-service',
+      },
+    );
+
+    await firstValueFrom(
+      this.client.emit(TOPICS.BILLING_EVENTS, {
+        key: customerId,
+        value: event,
+        headers: {
+          correlationId,
+          eventType: EVENT_TYPES.BILLING_FAILED,
+        },
+      }),
+    );
+  }
+
   async publish<T extends EventEnvelope<unknown>>(
     topic: string,
     key: string,

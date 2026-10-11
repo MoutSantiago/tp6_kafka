@@ -5,7 +5,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { Activation, ActivationDocument, ActivationStatus, HistoryEntry } from './activation.schema';
 import { CreateActivationDto } from './dto/activation.dto';
 import { KafkaProducerService } from '../kafka/kafka-producer.service';
-import type { BillingAccountCreatedEvent, ProvisioningCompletedEvent } from '@activation-poc/contracts';
+import type {
+  BillingAccountCreatedEvent,
+  BillingFailedEvent,
+  ProvisioningCompletedEvent,
+  ProvisioningFailedEvent,
+} from '@activation-poc/contracts';
 
 @Injectable()
 export class ActivationsService {
@@ -60,43 +65,85 @@ export class ActivationsService {
   }
 
   async handleBillingAccountCreated(event: BillingAccountCreatedEvent): Promise<void> {
-    await this.recordStepResult(
-      'billing',
-      event.correlationId,
-      event.customerId,
-      { eventType: event.eventType, details: { accountId: event.payload.accountId } },
-    );
+    await this.recordStepResult({
+      step: 'billing',
+      stepResult: 'OK',
+      reason: undefined,
+      activationId: event.correlationId,
+      customerId: event.customerId,
+      historyEntry: {
+        eventType: event.eventType,
+        details: { accountId: event.payload.accountId },
+      },
+    });
+  }
+
+  async handleBillingFailed(event: BillingFailedEvent): Promise<void> {
+    await this.recordStepResult({
+      step: 'billing',
+      stepResult: 'FAILED',
+      reason: event.payload.reason,
+      activationId: event.correlationId,
+      customerId: event.customerId,
+      historyEntry: {
+        eventType: event.eventType,
+        details: { reason: event.payload.reason },
+      },
+    });
   }
 
   async handleProvisioningCompleted(event: ProvisioningCompletedEvent): Promise<void> {
-    await this.recordStepResult(
-      'provisioning',
-      event.correlationId,
-      event.customerId,
-      { eventType: event.eventType, details: { orderId: event.payload.orderId, lineId: event.payload.lineId } },
-    );
+    await this.recordStepResult({
+      step: 'provisioning',
+      stepResult: 'OK',
+      reason: undefined,
+      activationId: event.correlationId,
+      customerId: event.customerId,
+      historyEntry: {
+        eventType: event.eventType,
+        details: { orderId: event.payload.orderId, lineId: event.payload.lineId },
+      },
+    });
   }
 
-  private async recordStepResult(
-    step: 'billing' | 'provisioning',
-    activationId: string,
-    customerId: string,
-    historyEntry: { eventType: string; details?: Record<string, unknown> },
-  ): Promise<void> {
+  async handleProvisioningFailed(event: ProvisioningFailedEvent): Promise<void> {
+    await this.recordStepResult({
+      step: 'provisioning',
+      stepResult: 'FAILED',
+      reason: event.payload.reason,
+      activationId: event.correlationId,
+      customerId: event.customerId,
+      historyEntry: {
+        eventType: event.eventType,
+        details: { orderId: event.payload.orderId, reason: event.payload.reason },
+      },
+    });
+  }
+
+  private async recordStepResult(params: {
+    step: 'billing' | 'provisioning';
+    stepResult: 'OK' | 'FAILED';
+    reason?: string;
+    activationId: string;
+    customerId: string;
+    historyEntry: { eventType: string; details?: Record<string, unknown> };
+  }): Promise<void> {
+    const { step, stepResult, reason, activationId, customerId, historyEntry } = params;
     const now = new Date().toISOString();
 
-    // Actualización atómica: solo actualiza si el step sigue en PENDING.
-    // Devuelve el documento resultante para decidir el siguiente paso con datos frescos.
+    // Actualización atómica 1 — registrar el resultado del step:
+    // solo corre si ese step sigue PENDING (evita re-procesar replays) pero NO filtra por
+    // estado global: si la saga ya terminó (FAILED o ACTIVE) un resultado posterior queda
+    // igualmente registrado en steps e history, sin cambiar estado ni publicar nada.
     const updated = await this.activationModel
       .findOneAndUpdate(
-        { _id: activationId, [`steps.${step}.status` as const]: 'PENDING' },
+        {
+          _id: activationId,
+          [`steps.${step}.status` as const]: 'PENDING',
+        },
         {
           $set: {
-            [`steps.${step}`]: { status: 'OK', at: now },
-            // El primer resultado mueve la activación a IN_PROGRESS.
-            // Si el segundo llega después, este $set pisa IN_PROGRESS con el mismo valor; si llega
-            // antes del cierre, el documento resultante ya tiene ambos steps OK para la decisión.
-            status: 'IN_PROGRESS',
+            [`steps.${step}`]: { status: stepResult, at: now, ...(reason ? { reason } : {}) },
             updatedAt: now,
           },
           $push: {
@@ -113,9 +160,50 @@ export class ActivationsService {
       .exec();
 
     if (!updated) {
-      // La activación no existe o ese step ya fue procesado (posible replay del mensaje); nada que hacer.
+      // La activación no existe o ese step ya fue procesado (posible replay); nada que hacer.
       return;
     }
+
+    if (stepResult === 'FAILED') {
+      // Primer fallo: solo un consumidor concurrente puede ganar esta transición porque
+      // el filtro exige un estado no terminal. Mongo aplica cada findOneAndUpdate de forma
+      // atómica por documento, así que el segundo intento concurrente encuentra FAILED y
+      // devuelve null: ActivationFailed se publica exactamente una vez.
+      const failed = await this.activationModel
+        .findOneAndUpdate(
+          { _id: activationId, status: { $in: ['PENDING', 'IN_PROGRESS'] } },
+          {
+            $set: { status: 'FAILED', updatedAt: now },
+            $push: {
+              history: {
+                eventType: 'ActivationFailed',
+                at: now,
+                details: { planId: updated.planId, failedStep: step, reason: reason ?? '' },
+              },
+            },
+          },
+          { new: true },
+        )
+        .lean()
+        .exec();
+
+      if (failed) {
+        await this.kafkaProducer.publishActivationFailed(
+          activationId,
+          customerId,
+          updated.planId,
+          step,
+          reason ?? '',
+        );
+      }
+      return;
+    }
+
+    // Resultado OK: el primer resultado mueve la saga a IN_PROGRESS (si ya está más avanzada,
+    // el filtro lo impide; esta escritura es inofensiva en carrera porque no cambia identidad).
+    await this.activationModel
+      .updateOne({ _id: activationId, status: 'PENDING' }, { $set: { status: 'IN_PROGRESS', updatedAt: now } })
+      .exec();
 
     const bothOk =
       updated.steps.billing.status === 'OK' && updated.steps.provisioning.status === 'OK';

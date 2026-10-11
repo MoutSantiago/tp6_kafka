@@ -24,6 +24,25 @@ export class BillingService {
       `Processing ActivationRequested for correlationId: ${correlationId}, customerId: ${customerId}`,
     );
 
+    // Fallo de negocio simulado: no es un error técnico. No se crea la cuenta y se
+    // publica BillingFailed como resultado de negocio en billing.events.
+    if (event.simulateFailure === 'billing') {
+      const reason = 'Fallo simulado en billing';
+      this.logger.warn(
+        `Simulated billing failure for activation ${correlationId}`,
+      );
+      await this.kafkaProducer.publishBillingFailed(
+        correlationId,
+        customerId,
+        reason,
+        planId,
+      );
+      this.logger.log(
+        `Published BillingFailed for correlationId: ${correlationId}`,
+      );
+      return;
+    }
+
     const accountId = `acc-${uuidv4().slice(0, 8)}`;
 
     await this.billingAccountModel.create({
