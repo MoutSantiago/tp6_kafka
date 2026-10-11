@@ -8,6 +8,7 @@
     "build:kafka-toolkit": "pnpm --filter @activation-poc/kafka-toolkit run build"
   },
   "devDependencies": {
+    "tsx": "^4.23.15",
     "typescript": "^5.4.0"
   },
   "engines": {
@@ -16,5 +17,8 @@
   "packageManager": "pnpm@9.0.0",
   "pnpm": {
     "onlyBuiltDependencies": []
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
   }
 }
