@@ -4,6 +4,11 @@ import { AppModule } from './app.module';
 import { appConfig, kafkaConfig } from './config/env.config';
 import { TOPICS } from '@activation-poc/contracts';
 
+/**
+ * Punto de entrada de crm-analytics-service.
+ * Levanta la app Nest con HTTP, conecta el microservicio Kafka suscrito a
+ * todos los topics de negocio y arranca el consumo.
+ */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

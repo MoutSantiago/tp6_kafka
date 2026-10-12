@@ -7,6 +7,11 @@ import { KafkaProducerService } from '../kafka/kafka-producer.service';
 import { consumeIdempotently, ProcessedEvent, ProcessedEventDocument } from '@activation-poc/kafka-toolkit';
 import type { ActivationRequestedEvent } from '@activation-poc/contracts';
 
+/**
+ * Servicio de negocio de provisioning-service. Consume ActivationRequested,
+ * simula una demora de aprovisionamiento, crea la orden de forma idempotente
+ * y publica ProvisioningCompleted o ProvisioningFailed.
+ */
 @Injectable()
 export class ProvisioningService {
   private readonly logger = new Logger(ProvisioningService.name);
@@ -19,6 +24,12 @@ export class ProvisioningService {
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
+  /**
+   * Procesa ActivationRequested: simula la demora, crea la orden de
+   * aprovisionamiento dentro de una transacción idempotente y publica el
+   * resultado (Completed si OK, Failed si el fallo está simulado).
+   * @param event Evento ActivationRequested recibido de Kafka.
+   */
   async handleActivationRequested(event: ActivationRequestedEvent): Promise<void> {
     const { correlationId, customerId } = event;
     const { planId } = event.payload;

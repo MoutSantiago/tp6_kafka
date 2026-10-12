@@ -4,6 +4,11 @@ import { AppModule } from './app.module';
 import { kafkaConfig } from './config/env.config';
 import { TOPICS } from '@activation-poc/contracts';
 
+/**
+ * Punto de entrada de loyalty-service.
+ * Levanta la app Nest y conecta el microservicio Kafka suscrito a todos los
+ * topics de negocio desde el inicio del historial (fromBeginning).
+ */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

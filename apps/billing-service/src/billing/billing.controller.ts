@@ -13,6 +13,11 @@ import type {
   ActivationFailedEvent,
 } from '@activation-poc/contracts';
 
+/**
+ * Controlador-consumidor Kafka de billing-service: escucha activation.requested
+ * y activation.events, valida los sobres y delega en BillingService envolviendo
+ * todo con protección DLQ.
+ */
 @Controller()
 export class BillingController {
   private readonly dlq: DlqHandler;
@@ -27,6 +32,11 @@ export class BillingController {
     );
   }
 
+  /**
+   * Escucha el topic activation.requested y delega en el servicio con DLQ.
+   * @param event Evento ActivationRequested.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.ACTIVATION_REQUESTED)
   async handleActivationRequested(
     @Payload() event: ActivationRequestedEvent,
@@ -41,6 +51,11 @@ export class BillingController {
     );
   }
 
+  /**
+   * Escucha el topic activation.events y procesa solo los ActivationFailed.
+   * @param event Evento recibido (se verifica que sea ActivationFailed).
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.ACTIVATION_EVENTS)
   async handleActivationEvent(
     @Payload() event: ActivationFailedEvent,
@@ -57,6 +72,11 @@ export class BillingController {
     );
   }
 
+  /**
+   * Arma el mensaje Kafka crudo (para el DLQ) a partir del contexto Nest.
+   * @param context Contexto Kafka del mensaje recibido.
+   * @returns Mensaje crudo listo para re-publicar en el DLQ.
+   */
   private rawMessage(context: KafkaContext) {
     return toRawKafkaMessage({
       topic: context.getTopic(),

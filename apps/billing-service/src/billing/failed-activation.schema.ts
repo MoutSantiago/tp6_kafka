@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+/** Tipo documento Mongoose de FailedActivation. */
 export type FailedActivationDocument = FailedActivation & Document;
 
 /**
@@ -20,4 +21,5 @@ export class FailedActivation {
   at!: string;
 }
 
+/** Esquema Mongoose generado a partir de la clase FailedActivation. */
 export const FailedActivationSchema = SchemaFactory.createForClass(FailedActivation);

@@ -15,4 +15,8 @@ import { ProvisioningController } from './provisioning.controller';
   controllers: [ProvisioningController],
   providers: [ProvisioningService],
 })
+/**
+ * Módulo de provisioning: registra los modelos Mongo (ProvisioningOrder y
+ * ProcessedEvent), el consumidor Kafka y el servicio de aprovisionamiento.
+ */
 export class ProvisioningModule {}

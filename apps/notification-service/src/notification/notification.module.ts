@@ -18,4 +18,8 @@ import { smtpConfig } from '../config/env.config';
   controllers: [NotificationController],
   providers: [NotificationService],
 })
+/**
+ * Módulo de notification: registra la config SMTP, los modelos Mongo
+ * (Notification y ProcessedEvent), el consumidor Kafka y el servicio de envío.
+ */
 export class NotificationModule {}

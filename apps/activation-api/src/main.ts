@@ -6,6 +6,11 @@ import { AppModule } from "./app.module";
 import { appConfig, kafkaConfig } from "./config/env.config";
 import { TOPICS } from "@activation-poc/contracts";
 
+/**
+ * Punto de entrada de activation-api.
+ * Levanta la app HTTP con Swagger y validación global, conecta el microservicio
+ * Kafka (suscrito a billing.events y provisioning.events) y expone la API REST.
+ */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

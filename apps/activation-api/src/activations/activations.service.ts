@@ -15,6 +15,12 @@ import type {
   ProvisioningFailedEvent,
 } from '@activation-poc/contracts';
 
+/**
+ * Servicio de negocio de activation-api y agregador de la saga de activación.
+ * Crea activaciones, consume los resultados de billing/provisioning de forma
+ * idempotente (transaccional) y delimita las transiciones de estado, emitiendo
+ * por WebSocket y publicando ActivationCompleted/ActivationFailed una única vez.
+ */
 @Injectable()
 export class ActivationsService {
   constructor(
@@ -24,6 +30,12 @@ export class ActivationsService {
     private readonly gateway: ActivationsGateway,
   ) {}
 
+  /**
+   * Crea una activación en Mongo (estado PENDING), emite el evento inicial por
+   * WebSocket y publica ActivationRequested en Kafka.
+   * @param dto Datos de la solicitud de activación.
+   * @returns ID generado y estado inicial de la activación.
+   */
   async create(dto: CreateActivationDto): Promise<{ activationId: string; status: ActivationStatus }> {
     const activationId = `act-${uuidv4().slice(0, 8)}`;
     const now = new Date().toISOString();
@@ -68,6 +80,12 @@ export class ActivationsService {
     return { activationId, status: 'PENDING' };
   }
 
+  /**
+   * Busca una activación por ID.
+   * @param id ID de la activación.
+   * @returns Detalle completo de la activación.
+   * @throws NotFoundException Si la activación no existe.
+   */
   async findById(id: string): Promise<ActivationDetailsResponseDto> {
     const activation = await this.activationModel.findById(id).lean().exec();
     if (!activation) {
@@ -76,6 +94,10 @@ export class ActivationsService {
     return activation as unknown as ActivationDetailsResponseDto;
   }
 
+  /**
+   * Maneja BillingAccountCreated: marca el paso 'billing' como OK.
+   * @param event Evento de cuenta de facturación creada.
+   */
   async handleBillingAccountCreated(event: BillingAccountCreatedEvent): Promise<void> {
     await this.recordStepResult({
       step: 'billing',
@@ -91,6 +113,11 @@ export class ActivationsService {
     });
   }
 
+  /**
+   * Maneja BillingAccountCancelled (compensación): la registra en el historial
+   * y la emite por WebSocket sin cambiar el estado terminal de la saga.
+   * @param event Evento de cancelación de cuenta de facturación.
+   */
   async handleBillingAccountCancelled(event: BillingAccountCancelledEvent): Promise<void> {
     // La compensación no cambia el estado de la saga (ya está terminal) pero SÍ
     // queda registrada en el history y se emite por WebSocket (RF-08: la timeline
@@ -132,6 +159,10 @@ export class ActivationsService {
     });
   }
 
+  /**
+   * Maneja BillingFailed: marca el paso 'billing' como FAILED.
+   * @param event Evento de fallo de facturación.
+   */
   async handleBillingFailed(event: BillingFailedEvent): Promise<void> {
     await this.recordStepResult({
       step: 'billing',
@@ -147,6 +178,10 @@ export class ActivationsService {
     });
   }
 
+  /**
+   * Maneja ProvisioningCompleted: marca el paso 'provisioning' como OK.
+   * @param event Evento de aprovisionamiento completado.
+   */
   async handleProvisioningCompleted(event: ProvisioningCompletedEvent): Promise<void> {
     await this.recordStepResult({
       step: 'provisioning',
@@ -162,6 +197,10 @@ export class ActivationsService {
     });
   }
 
+  /**
+   * Maneja ProvisioningFailed: marca el paso 'provisioning' como FAILED.
+   * @param event Evento de fallo de aprovisionamiento.
+   */
   async handleProvisioningFailed(event: ProvisioningFailedEvent): Promise<void> {
     await this.recordStepResult({
       step: 'provisioning',
@@ -177,6 +216,13 @@ export class ActivationsService {
     });
   }
 
+  /**
+   * Núcleo del agregador: registra el resultado de un paso dentro de una
+   * transacción idempotente y, según el resultado, actualiza el estado global
+   * de la saga. Los efectos externos (WebSocket/Kafka) se ejecutan solo después
+   * del commit, garantizando publicación exactamente-una-vez de los eventos finales.
+   * @param params Paso afectado, resultado, evento asociado y entrada de historial.
+   */
   private async recordStepResult(params: {
     step: 'billing' | 'provisioning';
     stepResult: 'OK' | 'FAILED';
@@ -352,6 +398,7 @@ export class ActivationsService {
   }
 }
 
+/** DTO interno con el detalle completo de una activación tal como se persiste. */
 interface ActivationDetailsResponseDto {
   _id: string;
   customerId: string;

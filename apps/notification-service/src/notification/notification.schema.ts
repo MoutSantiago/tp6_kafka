@@ -1,8 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+/** Tipo documento Mongoose de Notification. */
 export type NotificationDocument = Notification & Document;
 
+/**
+ * Esquema Mongo de una notificación enviada por email (una por
+ * activationId + eventType).
+ */
 @Schema({ collection: 'notifications', timestamps: true })
 export class Notification {
   @Prop({ type: String, required: true })
@@ -24,6 +29,7 @@ export class Notification {
   sentAt!: Date;
 }
 
+/** Esquema Mongoose generado a partir de la clase Notification. */
 export const NotificationSchema = SchemaFactory.createForClass(Notification);
 
 // Un email por par (activationId, eventType)

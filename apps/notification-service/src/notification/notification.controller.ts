@@ -13,6 +13,10 @@ import type {
   ActivationFailedEvent,
 } from '@activation-poc/contracts';
 
+/**
+ * Controlador-consumidor Kafka de notification-service: escucha el topic
+ * activation.events y delega en NotificationService con protección DLQ.
+ */
 @Controller()
 export class NotificationController {
   private readonly dlq: DlqHandler;
@@ -27,6 +31,12 @@ export class NotificationController {
     );
   }
 
+  /**
+   * Escucha el topic activation.events (ActivationCompleted / ActivationFailed)
+   * y procesa el evento con DLQ.
+   * @param event Evento de activación recibido.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.ACTIVATION_EVENTS)
   async handleActivationEvent(
     @Payload() event: ActivationCompletedEvent | ActivationFailedEvent,

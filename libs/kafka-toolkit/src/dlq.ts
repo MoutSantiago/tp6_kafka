@@ -1,8 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { Kafka, Producer } from 'kafkajs';
 
+/** Cantidad máxima de reintentos antes de enviar un mensaje a la DLQ. */
 export const DLQ_MAX_RETRIES = 3;
+/** Esperas progresivas entre reintentos: 1s, 2s, 4s. */
 export const DLQ_RETRY_DELAYS_MS = [1000, 2000, 4000] as const; // 1s, 2s, 4s
+/** Sufijo de los topics dead-letter queue. */
 export const DLQ_SUFFIX = '.dlq';
 
 /**
@@ -63,6 +66,13 @@ export class DlqHandler {
     private readonly clientId = 'dlq-producer',
   ) {}
 
+  /**
+   * Ejecuta el handler con reintentos ante errores técnicos; si agota los
+   * reintentos, publica el mensaje original en la DLQ y devuelve undefined.
+   * @param message Mensaje Kafka original (para republicar en la DLQ).
+   * @param fn Handler a ejecutar.
+   * @returns Resultado del handler, o undefined si el mensaje fue a la DLQ.
+   */
   async run<T>(message: RawKafkaMessage, fn: () => Promise<T>): Promise<T | undefined> {
     let lastError: Error | undefined;
 
@@ -85,6 +95,12 @@ export class DlqHandler {
     return undefined;
   }
 
+  /**
+   * Publica el mensaje original en `<topic>.dlq` con headers de diagnóstico
+   * (error, retryCount, originalTopic, failedAt).
+   * @param message Mensaje original.
+   * @param error Último error producido tras los reintentos.
+   */
   private async sendToDlq(message: RawKafkaMessage, error: Error): Promise<void> {
     const producer = await this.getProducer();
     const dlqTopic = `${message.topic}${DLQ_SUFFIX}`;
@@ -111,6 +127,10 @@ export class DlqHandler {
     );
   }
 
+  /**
+   * Devuelve el productor Kafka, creándolo y conectándolo de forma perezosa.
+   * @returns Productor conectado.
+   */
   private async getProducer(): Promise<Producer> {
     if (!this.producer) {
       this.producer = new Kafka({

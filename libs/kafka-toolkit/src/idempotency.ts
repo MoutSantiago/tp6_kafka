@@ -1,6 +1,7 @@
 import { ClientSession, Model } from 'mongoose';
 import type { ProcessedEventDocument } from './schemas/processed-event.schema';
 
+/** Resultado del consumo idempotente: 'processed' si se aplicó el efecto, 'duplicate' si se descartó. */
 export type IdempotencyResult = 'processed' | 'duplicate';
 
 /**

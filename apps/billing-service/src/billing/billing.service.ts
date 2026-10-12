@@ -8,6 +8,12 @@ import { KafkaProducerService } from '../kafka/kafka-producer.service';
 import { consumeIdempotently, ProcessedEvent, ProcessedEventDocument } from '@activation-poc/kafka-toolkit';
 import type { ActivationRequestedEvent, ActivationFailedEvent } from '@activation-poc/contracts';
 
+/**
+ * Servicio de negocio de billing-service. Consume ActivationRequested (crea la
+ * cuenta de facturación de forma idempotente o publica BillingFailed si la falla
+ * es simulada) y ActivationFailed (compensa cancelando la cuenta, con marcador
+ * atómico para el caso borde en que el fallo llega antes que la creación).
+ */
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
@@ -22,6 +28,12 @@ export class BillingService {
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
+  /**
+   * Procesa ActivationRequested: crea la billing account de forma idempotente
+   * (transacción con processed_events) y publica BillingAccountCreated, o
+   * BillingFailed si el fallo de billing está simulado.
+   * @param event Evento ActivationRequested recibido de Kafka.
+   */
   async handleActivationRequested(event: ActivationRequestedEvent): Promise<void> {
     const { correlationId, customerId } = event;
     const { planId } = event.payload;
@@ -112,6 +124,11 @@ export class BillingService {
     }
   }
 
+  /**
+   * Procesa ActivationFailed (compensación): registra un marcador de fallo y
+   * cancela la cuenta si existe, todo dentro de una transacción idempotente.
+   * @param event Evento ActivationFailed recibido de Kafka.
+   */
   async handleActivationFailed(event: ActivationFailedEvent): Promise<void> {
     const { correlationId, customerId } = event;
     const reason = event.payload.reason;
@@ -144,6 +161,15 @@ export class BillingService {
     );
   }
 
+  /**
+   * Cancela atómicamente la cuenta de una activación (solo si sigue en CREATED)
+   * y publica BillingAccountCancelled. Si la cuenta no existe o ya se canceló,
+   * no publica nada (deduplicación entre handlers concurrentes).
+   * @param activationId ID de la activación.
+   * @param customerId ID del cliente.
+   * @param session Sesión de la transacción Mongo en curso, si aplica.
+   * @param reason Motivo de la cancelación.
+   */
   private async cancelAccount(
     activationId: string,
     customerId: string,

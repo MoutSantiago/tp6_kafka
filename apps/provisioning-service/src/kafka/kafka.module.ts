@@ -38,4 +38,8 @@ import { KafkaProducerService } from './kafka-producer.service';
   providers: [KafkaProducerService],
   exports: [ClientsModule, KafkaProducerService],
 })
+/**
+ * Módulo global de Kafka de provisioning-service: registra el ClientKafka
+ * productor ("KAFKA_CLIENT") y expone el KafkaProducerService.
+ */
 export class KafkaModule {}

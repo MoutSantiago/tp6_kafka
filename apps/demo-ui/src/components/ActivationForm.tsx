@@ -1,3 +1,4 @@
+/** Props del formulario de contratación de activación. */
 interface Props {
   customerId: string;
   planId: string;
@@ -9,6 +10,10 @@ interface Props {
   onSubmit: () => void;
 }
 
+/**
+ * Formulario de la demo UI para crear una activación: cliente, plan, fallo a
+ * simular y botón de envío.
+ */
 export function ActivationForm(props: Props) {
   return (
     <form

@@ -16,6 +16,10 @@
  */
 import { Kafka } from 'kafkajs';
 
+/**
+ * Función principal: publica un mensaje inválido (JSON roto o envelope
+ * incompleto) en el topic indicado para probar reintentos y DLQ.
+ */
 async function main() {
   const topic = process.argv[2];
   const mode = process.argv[3] ?? 'broken';

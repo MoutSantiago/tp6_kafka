@@ -3,11 +3,20 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { ActivationsService } from './activations.service';
 import { CreateActivationDto, ActivationResponseDto, ActivationDetailsResponseDto } from './dto/activation.dto';
 
+/**
+ * Controlador REST de activaciones: permite crear una activación
+ * (POST /activations, responde 202) y consultar su detalle (GET /activations/:id).
+ */
 @ApiTags('activations')
 @Controller('activations')
 export class ActivationsController {
   constructor(private readonly activationsService: ActivationsService) {}
 
+  /**
+   * Crea una nueva activación y publica ActivationRequested en Kafka.
+   * @param dto Datos de la solicitud (customerId, planId, simulateFailure opcional).
+   * @returns ID de la activación y estado inicial.
+   */
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({ summary: 'Create a new activation' })
@@ -17,6 +26,11 @@ export class ActivationsController {
     return this.activationsService.create(dto);
   }
 
+  /**
+   * Devuelve el detalle completo de una activación (estado, pasos e historial).
+   * @param id ID de la activación (ej. act-0001).
+   * @returns Detalle de la activación o 404 si no existe.
+   */
   @Get(':id')
   @ApiOperation({ summary: 'Get activation details by ID' })
   @ApiParam({ name: 'id', example: 'act-0001' })

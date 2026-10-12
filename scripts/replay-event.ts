@@ -15,6 +15,10 @@
 import { Kafka } from 'kafkajs';
 import { MongoClient } from 'mongodb';
 
+/**
+ * Función principal: lee el envelope persistido del event_log de crm-analytics
+ * y republica el evento (con el mismo eventId) en su topic original.
+ */
 async function main() {
   const eventId = process.argv[2];
   if (!eventId) {

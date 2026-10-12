@@ -28,4 +28,8 @@ import { ProvisioningModule } from "./provisioning/provisioning.module";
     ProvisioningModule,
   ],
 })
+/**
+ * Módulo raíz de provisioning-service: config global, conexión a MongoDB y
+ * registros de los módulos Kafka y Provisioning.
+ */
 export class AppModule {}

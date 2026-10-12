@@ -11,8 +11,14 @@ import type { SmtpConfig } from '../config/env.config';
 import { EVENT_TYPES } from '@activation-poc/contracts';
 import type { ActivationCompletedEvent, ActivationFailedEvent } from '@activation-poc/contracts';
 
+/** Union de los eventos de activación que generan notificaciones. */
 type ActivationEvent = ActivationCompletedEvent | ActivationFailedEvent;
 
+/**
+ * Servicio de negocio de notification-service: ante ActivationCompleted o
+ * ActivationFailed envía un email simulado (SMTP) y registra la notificación
+ * en Mongo, todo de forma idempotente.
+ */
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -34,6 +40,12 @@ export class NotificationService {
     this.from = config.from;
   }
 
+  /**
+   * Procesa un evento de activación: envía el email correspondiente y registra
+   * la notificación dentro de una transacción idempotente (los duplicados no
+   * reenvían el email).
+   * @param event ActivationCompleted o ActivationFailed recibido de Kafka.
+   */
   async handleActivationEvent(event: ActivationEvent): Promise<void> {
     const { correlationId, customerId, eventType } = event;
 
@@ -93,6 +105,11 @@ export class NotificationService {
     this.logger.log(`Sent "${subject}" to ${to} (activation ${correlationId})`);
   }
 
+  /**
+   * Arma asunto y cuerpo del email según el tipo de evento.
+   * @param event Evento de activación.
+   * @returns Objeto con subject y text del email.
+   */
   private buildEmail(event: ActivationEvent): { subject: string; text: string } {
     if (event.eventType === EVENT_TYPES.ACTIVATION_COMPLETED) {
       return {

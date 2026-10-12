@@ -3,12 +3,14 @@ import { Model } from 'mongoose';
 import { Kafka, Consumer, Producer, EachMessagePayload, KafkaConfig, IHeaders } from 'kafkajs';
 import { EventEnvelope } from '@activation-poc/contracts';
 
+/** Documento de la colección processed_events usado para idempotencia básica. */
 export interface ProcessedEventDocument {
   _id: string;
   eventId: string;
   processedAt: Date;
 }
 
+/** Opciones de configuración del consumidor base (brokers, grupo, topics, reintentos y DLQ). */
 export interface KafkaConsumerOptions {
   brokers: string[];
   groupId: string;
@@ -18,6 +20,12 @@ export interface KafkaConsumerOptions {
 }
 
 @Injectable()
+/**
+ * Consumidor Kafka base (abstracto): gestiona conexión, suscripción a topics,
+ * procesamiento idempotente vía processed_events, commit manual de offsets,
+ * reintentos con republicación y envío a DLQ ante errores técnicos.
+ * Las subclases implementan handleEvent y proveen el modelo de idempotencia.
+ */
 export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelope>
   implements OnModuleInit, OnModuleDestroy
 {
@@ -28,22 +36,30 @@ export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelo
   protected options: KafkaConsumerOptions;
   protected abstract model: Model<ProcessedEventDocument>;
 
+  /**
+   * Lógica de negocio del consumidor: procesa un evento ya decodificado.
+   * Debe ser implementada por la subclase.
+   * @param event Evento a procesar.
+   */
   abstract handleEvent(event: T): Promise<void>;
 
   constructor(options: KafkaConsumerOptions) {
     this.options = options;
   }
 
+  /** Inicializa Kafka (cliente, consumidor y productor) y arranca el consumo. */
   async onModuleInit(): Promise<void> {
     await this.setupKafka();
     await this.startConsumer();
   }
 
+  /** Desconecta consumidor y productor al destruirse el módulo. */
   async onModuleDestroy(): Promise<void> {
     await this.consumer?.disconnect();
     await this.producer?.disconnect();
   }
 
+  /** Crea y configura el cliente Kafka, el consumidor (con reintentos) y el productor. */
   protected async setupKafka(): Promise<void> {
     const kafkaConfig: KafkaConfig = {
       clientId: `${this.options.groupId}-consumer`,
@@ -66,6 +82,7 @@ export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelo
     await this.producer.connect();
   }
 
+  /** Conecta el consumidor, lo suscribe a los topics y arranca el loop con commit manual. */
   protected async startConsumer(): Promise<void> {
     await this.consumer.connect();
 
@@ -86,6 +103,12 @@ export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelo
     this.logger.log(`Consumer started for topics: ${this.options.topics.join(', ')}`);
   }
 
+  /**
+   * Procesa un mensaje individual: verifica idempotencia por eventId, decodifica
+   * el evento, lo procesa, lo marca como procesado y commitea el offset. Ante
+   * errores delega en handleProcessingError (reintento/DLQ).
+   * @param payload Mensaje Kafka recibido.
+   */
   protected async processMessage(payload: EachMessagePayload): Promise<void> {
     const { topic, partition, message } = payload;
     const eventId = message.headers?.eventId?.toString() || '';
@@ -127,6 +150,10 @@ export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelo
     }
   }
 
+  /**
+   * Commitea manualmente el offset siguiente al mensaje procesado.
+   * @param payload Mensaje cuyo offset se quiere confirmar.
+   */
   protected async commitOffset(payload: EachMessagePayload): Promise<void> {
     const { topic, partition, message } = payload;
     try {
@@ -143,6 +170,11 @@ export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelo
     }
   }
 
+  /**
+   * Verifica si un eventId ya fue procesado (consulta en processed_events).
+   * @param eventId ID del evento a verificar.
+   * @returns true si ya fue procesado; false si no o ante error de consulta.
+   */
   protected async isEventProcessed(eventId: string): Promise<boolean> {
     try {
       const doc = await this.model.findById(eventId).exec();
@@ -155,6 +187,11 @@ export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelo
     }
   }
 
+  /**
+   * Marca un evento como procesado insertando su eventId en processed_events.
+   * @param eventId ID del evento.
+   * @throws Propaga el error para permitir reintento o envío a DLQ.
+   */
   protected async markEventAsProcessed(eventId: string): Promise<void> {
     try {
       const doc = new this.model({
@@ -170,6 +207,13 @@ export abstract class KafkaConsumerService<T extends EventEnvelope = EventEnvelo
     }
   }
 
+  /**
+   * Maneja un error técnico de procesamiento: republica el mensaje en el mismo
+   * topic con el contador de reintentos incrementado, o lo envía a la DLQ si ya
+   * agotó los reintentos, commiteando el offset para no bloquear la partición.
+   * @param payload Mensaje que falló.
+   * @param error Error arrojado durante el procesamiento.
+   */
   protected async handleProcessingError(payload: EachMessagePayload, error: Error): Promise<void> {
     const { topic, partition, message } = payload;
     const eventId = message.headers?.eventId?.toString() || 'unknown';

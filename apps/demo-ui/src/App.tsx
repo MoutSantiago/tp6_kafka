@@ -6,6 +6,7 @@ import { Timeline } from './components/Timeline';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
+/** Evento de activación recibido por WebSocket para mostrar en la timeline. */
 export interface TimelineEvent {
   activationId: string;
   eventType: string;
@@ -13,6 +14,7 @@ export interface TimelineEvent {
   status: string;
 }
 
+/** Detalle de una activación tal como lo devuelve la API REST de activation-api. */
 export interface ActivationDetails {
   _id: string;
   customerId: string;
@@ -25,8 +27,14 @@ export interface ActivationDetails {
   history: Array<{ eventType: string; at: string; details?: Record<string, unknown> }>;
 }
 
+/** Etapa en la que se simula un fallo (o 'none'). */
 type SimulateFailure = 'none' | 'billing' | 'provisioning';
 
+/**
+ * Componente raíz de la demo UI: formulario para iniciar una activación,
+ * suscripción WebSocket a sus eventos y visualización del estado de la saga
+ * y la timeline de eventos en tiempo real.
+ */
 export function App() {
   const [customerId, setCustomerId] = useState('C-demo');
   const [planId, setPlanId] = useState('PLAN DEMO');
@@ -66,6 +74,11 @@ export function App() {
     };
   }, []);
 
+  /**
+   * Consulta el detalle de una activación en la API REST y siembra la timeline
+   * con el historial persistido (deduplicando por eventType + fecha).
+   * @param id ID de la activación a consultar.
+   */
   const fetchActivation = useCallback(async (id: string) => {
     try {
       const res = await fetch(`${API_URL}/activations/${id}`);
@@ -93,6 +106,10 @@ export function App() {
     }
   }, []);
 
+  /**
+   * Crea una activación vía POST a la API, resetea la vista, suscribe el
+   * WebSocket a la nueva activación y sincroniza el estado inicial.
+   */
   const handleSubmit = async () => {
     setSending(true);
     setError(null);

@@ -12,4 +12,8 @@ import { LoyaltyModule } from './loyalty/loyalty.module';
     LoyaltyModule,
   ],
 })
+/**
+ * Módulo raíz de loyalty-service: config global (app y Kafka) y registro del
+ * módulo Loyalty. Este servicio no usa MongoDB.
+ */
 export class AppModule {}

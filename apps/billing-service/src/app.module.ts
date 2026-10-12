@@ -25,4 +25,8 @@ import { BillingModule } from './billing/billing.module';
     BillingModule,
   ],
 })
+/**
+ * Módulo raíz de billing-service: config global, conexión a MongoDB y registros
+ * de los módulos Kafka y Billing.
+ */
 export class AppModule {}

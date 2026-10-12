@@ -10,6 +10,10 @@ import {
 } from '@activation-poc/kafka-toolkit';
 import type { ActivationRequestedEvent } from '@activation-poc/contracts';
 
+/**
+ * Controlador-consumidor Kafka de provisioning-service: escucha el topic
+ * activation.requested y delega en ProvisioningService con protección DLQ.
+ */
 @Controller()
 export class ProvisioningController {
   private readonly dlq: DlqHandler;
@@ -24,6 +28,11 @@ export class ProvisioningController {
     );
   }
 
+  /**
+   * Escucha el topic activation.requested y procesa el evento con DLQ.
+   * @param event Evento ActivationRequested.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.ACTIVATION_REQUESTED)
   async handleActivationRequested(
     @Payload() event: ActivationRequestedEvent,

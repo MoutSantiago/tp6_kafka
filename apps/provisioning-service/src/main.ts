@@ -4,6 +4,11 @@ import { AppModule } from './app.module';
 import { kafkaConfig } from './config/env.config';
 import { TOPICS } from '@activation-poc/contracts';
 
+/**
+ * Punto de entrada de provisioning-service.
+ * Levanta la app Nest, conecta el microservicio Kafka suscrito a
+ * activation.requested y arranca el consumo.
+ */
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 

@@ -25,4 +25,9 @@ import { ActivationsModule } from './activations/activations.module';
     ActivationsModule,
   ],
 })
+/**
+ * Módulo raíz de activation-api.
+ * Configura conexión a MongoDB, configuración global y registra los módulos
+ * de Kafka (productor) y Activations (REST, WebSocket y consumidor de eventos).
+ */
 export class AppModule {}

@@ -16,4 +16,8 @@ import { EventsController } from './events.controller';
   controllers: [EventsConsumer, EventsController],
   providers: [EventsService],
 })
+/**
+ * Módulo de events: registra los modelos Mongo (EventLog y ProcessedEvent), el
+ * consumidor Kafka, el controlador REST y el servicio de registro.
+ */
 export class EventsModule {}

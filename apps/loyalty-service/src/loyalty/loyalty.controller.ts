@@ -9,6 +9,11 @@ import {
 } from '@activation-poc/kafka-toolkit';
 import type { AnyEvent } from '@activation-poc/contracts';
 
+/**
+ * Consumidor Kafka de loyalty-service: escucha todos los topics de negocio y
+ * solo loguea cada evento recibido (demuestra consumo de historial completo),
+ * con protección DLQ.
+ */
 @Controller()
 export class LoyaltyController {
   private readonly logger = new Logger(LoyaltyController.name);
@@ -24,6 +29,11 @@ export class LoyaltyController {
     );
   }
 
+  /**
+   * Escucha el topic activation.requested y loguea el evento.
+   * @param event Evento recibido.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.ACTIVATION_REQUESTED)
   async handleActivationRequested(
     @Payload() event: AnyEvent,
@@ -32,6 +42,11 @@ export class LoyaltyController {
     return this.logEvent(event, context);
   }
 
+  /**
+   * Escucha el topic billing.events y loguea el evento.
+   * @param event Evento recibido.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.BILLING_EVENTS)
   async handleBillingEvents(
     @Payload() event: AnyEvent,
@@ -40,6 +55,11 @@ export class LoyaltyController {
     return this.logEvent(event, context);
   }
 
+  /**
+   * Escucha el topic provisioning.events y loguea el evento.
+   * @param event Evento recibido.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.PROVISIONING_EVENTS)
   async handleProvisioningEvents(
     @Payload() event: AnyEvent,
@@ -48,6 +68,11 @@ export class LoyaltyController {
     return this.logEvent(event, context);
   }
 
+  /**
+   * Escucha el topic activation.events y loguea el evento.
+   * @param event Evento recibido.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.ACTIVATION_EVENTS)
   async handleActivationEvents(
     @Payload() event: AnyEvent,
@@ -56,6 +81,12 @@ export class LoyaltyController {
     return this.logEvent(event, context);
   }
 
+  /**
+   * Valida el sobre del evento y lo loguea (tipo, ID, topic, partición,
+   * correlationId y payload) envuelto en el manejador de DLQ.
+   * @param event Evento recibido de cualquier topic de negocio.
+   * @param context Contexto Kafka del mensaje.
+   */
   private async logEvent(event: AnyEvent, context: KafkaContext): Promise<void> {
     await this.dlq.run(
       toRawKafkaMessage({ topic: context.getTopic(), ...context.getMessage() }),

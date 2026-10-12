@@ -6,6 +6,10 @@ import { consumeIdempotently, ProcessedEvent } from '@activation-poc/kafka-toolk
 import type { ProcessedEventDocument } from '@activation-poc/kafka-toolkit';
 import type { AnyEvent } from '@activation-poc/contracts';
 
+/**
+ * Servicio de negocio de crm-analytics-service: registra todos los eventos de
+ * la POC en un event log de Mongo de forma idempotente y expone consultas.
+ */
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
@@ -17,6 +21,12 @@ export class EventsService {
     private readonly processedEventModel: Model<ProcessedEventDocument>,
   ) {}
 
+  /**
+   * Registra un evento en el event_log dentro de una transacción idempotente;
+   * las entregas duplicadas se descartan sin duplicar documentos.
+   * @param event Evento de negocio recibido.
+   * @param topic Topic de origen del evento.
+   */
   async recordEvent(event: AnyEvent, topic: string): Promise<void> {
     this.logger.log(
       `Recording ${event.eventType} (${event.eventId}) from ${topic} for correlationId: ${event.correlationId}`,
@@ -52,6 +62,11 @@ export class EventsService {
     }
   }
 
+  /**
+   * Busca en el log todos los eventos de un correlationId, ordenados por fecha.
+   * @param correlationId ID de correlación a consultar.
+   * @returns Eventos registrados, en orden de ocurrencia.
+   */
   async findByCorrelationId(correlationId: string): Promise<EventLogDocument[]> {
     return this.eventLogModel
       .find({ correlationId })

@@ -23,4 +23,8 @@ import { EventsModule } from './events/events.module';
     EventsModule,
   ],
 })
+/**
+ * Módulo raíz de crm-analytics-service: config global, conexión a MongoDB y
+ * registro del módulo Events.
+ */
 export class AppModule {}

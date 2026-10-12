@@ -16,6 +16,11 @@ import type {
   ProvisioningFailedEvent,
 } from '@activation-poc/contracts';
 
+/**
+ * Controlador-consumidor Kafka de activation-api: escucha los topics
+ * billing.events y provisioning.events y delega cada evento al ActivationsService.
+ * Todo el procesamiento corre dentro del wrapper de DLQ del kafka-toolkit.
+ */
 @Controller()
 export class ActivationEventsController {
   private readonly dlq: DlqHandler;
@@ -30,6 +35,12 @@ export class ActivationEventsController {
     );
   }
 
+  /**
+   * Procesa eventos del topic billing.events (BillingAccountCreated,
+   * BillingFailed o BillingAccountCancelled) con protección DLQ.
+   * @param event Evento de facturación recibido.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.BILLING_EVENTS)
   async handleBillingEvent(
     @Payload() event: BillingAccountCreatedEvent | BillingFailedEvent | BillingAccountCancelledEvent,
@@ -50,6 +61,12 @@ export class ActivationEventsController {
     );
   }
 
+  /**
+   * Procesa eventos del topic provisioning.events (ProvisioningCompleted
+   * o ProvisioningFailed) con protección DLQ.
+   * @param event Evento de aprovisionamiento recibido.
+   * @param context Contexto Kafka (topic, partición, offset).
+   */
   @EventPattern(TOPICS.PROVISIONING_EVENTS)
   async handleProvisioningEvent(
     @Payload() event: ProvisioningCompletedEvent | ProvisioningFailedEvent,

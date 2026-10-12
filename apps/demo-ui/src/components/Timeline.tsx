@@ -1,5 +1,6 @@
 import type { TimelineEvent } from '../App';
 
+/** Tipos de evento considerados de éxito (se muestran en verde); el resto se muestra en rojo. */
 const SUCCESS_EVENTS = new Set([
   'ActivationRequested',
   'BillingAccountCreated',
@@ -7,6 +8,11 @@ const SUCCESS_EVENTS = new Set([
   'ActivationCompleted',
 ]);
 
+/**
+ * Formatea una fecha ISO como hora local hh:mm:ss.
+ * @param iso Fecha en formato ISO.
+ * @returns Hora formateada.
+ */
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString('es-AR', {
@@ -16,6 +22,11 @@ function formatTime(iso: string): string {
   });
 }
 
+/**
+ * Lista visual de la timeline de eventos de la activación: verde para eventos
+ * de éxito, rojo para fallos y compensaciones.
+ * @param events Eventos recibidos hasta el momento.
+ */
 export function Timeline({ events }: { events: TimelineEvent[] }) {
   if (events.length === 0) {
     return <p className="hint">Esperando eventos…</p>;

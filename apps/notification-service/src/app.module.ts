@@ -23,4 +23,8 @@ import { NotificationModule } from './notification/notification.module';
     NotificationModule,
   ],
 })
+/**
+ * Módulo raíz de notification-service: config global, conexión a MongoDB y
+ * registro del módulo Notification.
+ */
 export class AppModule {}

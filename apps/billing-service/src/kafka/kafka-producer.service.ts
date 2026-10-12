@@ -4,6 +4,10 @@ import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import { EventEnvelope, TOPICS, createEvent, EVENT_TYPES } from '@activation-poc/contracts';
 
+/**
+ * Productor Kafka de billing-service: publica los eventos BillingAccountCreated,
+ * BillingFailed y BillingAccountCancelled en el topic billing.events.
+ */
 @Injectable()
 export class KafkaProducerService implements OnModuleInit {
   constructor(
@@ -11,6 +15,7 @@ export class KafkaProducerService implements OnModuleInit {
     private readonly configService: ConfigService,
   ) {}
 
+  /** Devuelve la configuración de Kafka (brokers y groupId) desde el ConfigService. */
   get kafkaConfig() {
     return {
       brokers: this.configService.get<string[]>('kafka.brokers'),
@@ -18,10 +23,18 @@ export class KafkaProducerService implements OnModuleInit {
     };
   }
 
+  /** Conecta el cliente Kafka al iniciarse el módulo. */
   async onModuleInit(): Promise<void> {
     await this.client.connect();
   }
 
+  /**
+   * Publica BillingAccountCreated en billing.events.
+   * @param correlationId ID de la activación.
+   * @param customerId ID del cliente.
+   * @param accountId ID de la cuenta de facturación creada.
+   * @param planId Plan asociado.
+   */
   async publishBillingAccountCreated(
     correlationId: string,
     customerId: string,
@@ -50,6 +63,13 @@ export class KafkaProducerService implements OnModuleInit {
     );
   }
 
+  /**
+   * Publica BillingFailed en billing.events.
+   * @param correlationId ID de la activación.
+   * @param customerId ID del cliente.
+   * @param reason Motivo del fallo de facturación.
+   * @param planId Plan asociado.
+   */
   async publishBillingFailed(
     correlationId: string,
     customerId: string,
@@ -78,6 +98,13 @@ export class KafkaProducerService implements OnModuleInit {
     );
   }
 
+  /**
+   * Publica BillingAccountCancelled en billing.events (evento de compensación).
+   * @param correlationId ID de la activación.
+   * @param customerId ID del cliente.
+   * @param accountId ID de la cuenta cancelada.
+   * @param reason Motivo de la cancelación.
+   */
   async publishBillingAccountCancelled(
     correlationId: string,
     customerId: string,
@@ -106,6 +133,12 @@ export class KafkaProducerService implements OnModuleInit {
     );
   }
 
+  /**
+   * Publica un sobre de evento genérico en un topic arbitrario.
+   * @param topic Topic de destino.
+   * @param key Clave de partición.
+   * @param event Evento a publicar.
+   */
   async publish<T extends EventEnvelope<unknown>>(
     topic: string,
     key: string,

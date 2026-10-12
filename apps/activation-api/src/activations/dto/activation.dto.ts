@@ -1,6 +1,7 @@
 import { IsString, IsOptional, IsIn } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/** DTO de entrada para crear una activación (POST /activations). */
 export class CreateActivationDto {
   @ApiProperty({ example: 'C-1234' })
   @IsString()
@@ -16,6 +17,7 @@ export class CreateActivationDto {
   simulateFailure?: 'none' | 'billing' | 'provisioning';
 }
 
+/** DTO de respuesta al crear una activación (ID y estado inicial). */
 export class ActivationResponseDto {
   @ApiProperty({ example: 'act-0001' })
   activationId!: string;
@@ -24,6 +26,7 @@ export class ActivationResponseDto {
   status!: string;
 }
 
+/** DTO de respuesta con el detalle completo de una activación (estado, pasos e historial). */
 export class ActivationDetailsResponseDto {
   @ApiProperty()
   _id!: string;

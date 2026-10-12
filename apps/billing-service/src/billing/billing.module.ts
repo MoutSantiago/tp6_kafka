@@ -17,4 +17,8 @@ import { BillingController } from './billing.controller';
   controllers: [BillingController],
   providers: [BillingService],
 })
+/**
+ * Módulo de billing: registra los modelos Mongo (BillingAccount, FailedActivation,
+ * ProcessedEvent), el consumidor Kafka y el servicio de facturación.
+ */
 export class BillingModule {}

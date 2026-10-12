@@ -18,4 +18,9 @@ import { ActivationsService } from './activations.service';
   providers: [ActivationsService, ActivationsGateway],
   exports: [ActivationsService],
 })
+/**
+ * Módulo de activaciones: registra los modelos Mongo (Activation y ProcessedEvent),
+ * el controlador REST, el consumidor de eventos Kafka, el gateway WebSocket y el
+ * servicio de negocio ActivationsService.
+ */
 export class ActivationsModule {}
