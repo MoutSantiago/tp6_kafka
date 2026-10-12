@@ -5,4 +5,5 @@ export function getKafkaToolkitVersion(): string {
 }
 
 export * from './idempotency';
+export * from './dlq';
 export * from './schemas/processed-event.schema';
