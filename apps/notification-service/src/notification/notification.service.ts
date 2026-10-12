@@ -2,6 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { createTransport, Transporter } from 'nodemailer';
+import { consumeIdempotently, ProcessedEvent } from '@activation-poc/kafka-toolkit';
+import type { ProcessedEventDocument } from '@activation-poc/kafka-toolkit';
 import { Notification } from './notification.schema';
 import type { NotificationDocument } from './notification.schema';
 import { smtpConfig } from '../config/env.config';
@@ -20,6 +22,8 @@ export class NotificationService {
   constructor(
     @InjectModel(Notification.name)
     private readonly notificationModel: Model<NotificationDocument>,
+    @InjectModel(ProcessedEvent.name)
+    private readonly processedEventModel: Model<ProcessedEventDocument>,
     @Inject(smtpConfig.KEY) config: SmtpConfig,
   ) {
     this.transporter = createTransport({
@@ -47,25 +51,44 @@ export class NotificationService {
     const { subject, text } = this.buildEmail(event);
     const to = `${customerId}@demo.local`;
 
-    // Los errores técnicos del SMTP (nodemailer.sendMail rechazado) se propagan:
-    // Nest no commitea el offset y el mensaje se reintenta (fase 3 refinará con
-    // reintentos acotados y DLQ). Solo los emails efectivamente enviados quedan
-    // registrados en `notifications`.
-    await this.transporter.sendMail({
-      from: this.from,
-      to,
-      subject,
-      text,
-    });
+    // Idempotencia: el insert del eventId en processed_events y el efecto
+    // (envío del email + registro en notifications) van en una transacción.
+    // Entregas duplicadas del mismo eventId se descartan sin reenviar el email.
+    // Si el SMTP falla técnicamente, sendMail lanza y la transacción aborta:
+    // el evento NO queda marcado, Nest reintenta la entrega (fase 3 refinará
+    // con reintentos acotados y DLQ).
+    const { result } = await consumeIdempotently(
+      this.processedEventModel,
+      event.eventId,
+      async (session) => {
+        await this.transporter.sendMail({
+          from: this.from,
+          to,
+          subject,
+          text,
+        });
+        await this.notificationModel.create(
+          [
+            {
+              activationId: correlationId,
+              eventType,
+              customerId,
+              to,
+              subject,
+              sentAt: new Date(),
+            },
+          ],
+          { session },
+        );
+      },
+    );
 
-    await this.notificationModel.create({
-      activationId: correlationId,
-      eventType,
-      customerId,
-      to,
-      subject,
-      sentAt: new Date(),
-    });
+    if (result === 'duplicate') {
+      this.logger.warn(
+        `Duplicate activation event ${event.eventId}, skipping email send`,
+      );
+      return;
+    }
 
     this.logger.log(`Sent "${subject}" to ${to} (activation ${correlationId})`);
   }

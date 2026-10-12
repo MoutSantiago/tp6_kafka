@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ProvisioningOrder, ProvisioningOrderSchema } from './provisioning-order.schema';
+import { ProcessedEvent, ProcessedEventSchema } from '@activation-poc/kafka-toolkit';
 import { ProvisioningService } from './provisioning.service';
 import { ProvisioningController } from './provisioning.controller';
 
@@ -8,6 +9,7 @@ import { ProvisioningController } from './provisioning.controller';
   imports: [
     MongooseModule.forFeature([
       { name: ProvisioningOrder.name, schema: ProvisioningOrderSchema },
+      { name: ProcessedEvent.name, schema: ProcessedEventSchema },
     ]),
   ],
   controllers: [ProvisioningController],

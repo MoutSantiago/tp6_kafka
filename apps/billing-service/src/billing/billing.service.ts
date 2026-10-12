@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { BillingAccount, BillingAccountDocument } from './billing-account.schema';
 import { FailedActivation, FailedActivationDocument } from './failed-activation.schema';
 import { KafkaProducerService } from '../kafka/kafka-producer.service';
+import { consumeIdempotently, ProcessedEvent, ProcessedEventDocument } from '@activation-poc/kafka-toolkit';
 import type { ActivationRequestedEvent, ActivationFailedEvent } from '@activation-poc/contracts';
 
 @Injectable()
@@ -16,6 +17,8 @@ export class BillingService {
     private readonly billingAccountModel: Model<BillingAccountDocument>,
     @InjectModel(FailedActivation.name)
     private readonly failedActivationModel: Model<FailedActivationDocument>,
+    @InjectModel(ProcessedEvent.name)
+    private readonly processedEventModel: Model<ProcessedEventDocument>,
     private readonly kafkaProducer: KafkaProducerService,
   ) {}
 
@@ -27,17 +30,52 @@ export class BillingService {
       `Processing ActivationRequested for correlationId: ${correlationId}, customerId: ${customerId}`,
     );
 
-    // Fallo de negocio simulado: no es un error técnico. No se crea la cuenta y se
-    // publica BillingFailed como resultado de negocio en billing.events.
-    if (event.simulateFailure === 'billing') {
-      const reason = 'Fallo simulado en billing';
+    const accountId = `acc-${uuidv4().slice(0, 8)}`;
+
+    // Idempotencia: el insert en processed_events y la creación de la cuenta van
+    // en la misma transacción. Una entrega duplicada del mismo eventId falla con
+    // E11000 y se descarta sin crear una segunda cuenta ni republicar el evento.
+    const dup = await consumeIdempotently(
+      this.processedEventModel,
+      event.eventId,
+      async (session) => {
+        // Fallo de negocio simulado: no es un error técnico. No se crea la cuenta
+        // y se publica BillingFailed como resultado en billing.events.
+        if (event.simulateFailure === 'billing') {
+          return { ok: false as const, reason: 'Fallo simulado en billing' };
+        }
+        await this.billingAccountModel.create(
+          [
+            {
+              activationId: correlationId,
+              customerId,
+              planId,
+              accountId,
+              status: 'CREATED',
+            },
+          ],
+          { session },
+        );
+        return { ok: true as const };
+      },
+    );
+
+    if (dup.result === 'duplicate') {
+      this.logger.warn(
+        `Duplicate ActivationRequested ${event.eventId} for ${correlationId}, skipping`,
+      );
+      return;
+    }
+
+    const outcome = dup.value!;
+    if (!outcome.ok) {
       this.logger.warn(
         `Simulated billing failure for activation ${correlationId}`,
       );
       await this.kafkaProducer.publishBillingFailed(
         correlationId,
         customerId,
-        reason,
+        outcome.reason,
         planId,
       );
       this.logger.log(
@@ -46,15 +84,6 @@ export class BillingService {
       return;
     }
 
-    const accountId = `acc-${uuidv4().slice(0, 8)}`;
-
-    await this.billingAccountModel.create({
-      activationId: correlationId,
-      customerId,
-      planId,
-      accountId,
-      status: 'CREATED',
-    });
     this.logger.log(
       `Created billing account ${accountId} for activation ${correlationId}`,
     );
@@ -79,7 +108,7 @@ export class BillingService {
       this.logger.warn(
         `Activation ${correlationId} already failed before account creation; cancelling now`,
       );
-      await this.cancelAccount(correlationId, customerId, failedMarker.reason);
+      await this.cancelAccount(correlationId, customerId, undefined, failedMarker.reason);
     }
   }
 
@@ -91,25 +120,34 @@ export class BillingService {
       `Received ActivationFailed for correlationId: ${correlationId}, failedStep: ${event.payload.failedStep}`,
     );
 
-    // Marcador atómico (upsert): queda registro del fallo aunque la cuenta todavía no exista.
-    // Se escribe ANTES de intentar la cancelación para cerrar la carrera con la creación.
-    await this.failedActivationModel
-      .updateOne(
-        { _id: correlationId },
-        { $setOnInsert: { reason, at: new Date().toISOString() } },
-        { upsert: true },
-      )
-      .exec();
+    // Marcador atómico (upsert): queda registro del fallo aunque la cuenta todavía
+    // no exista. Marcador + cancelación van en una transacción junto al eventId en
+    // processed_events: una entrega duplicada del ActivationFailed se descarta sin
+    // efecto (no se republica BillingAccountCancelled).
+    await consumeIdempotently(
+      this.processedEventModel,
+      event.eventId,
+      async (session) => {
+        await this.failedActivationModel
+          .updateOne(
+            { _id: correlationId },
+            { $setOnInsert: { reason, at: new Date().toISOString() } },
+            { upsert: true, session },
+          )
+          .exec();
 
-    // Cancelación atómica: solo si la cuenta existe y sigue en CREATED.
-    // Quien gana el findOneAndUpdate (este handler o el post-chequeo de la creación)
-    // es el único que publica BillingAccountCancelled: no hay doble publicación.
-    await this.cancelAccount(correlationId, customerId, reason);
+        // Cancelación atómica: solo si la cuenta existe y sigue en CREATED.
+        // Quien gana el findOneAndUpdate (este handler o el post-chequeo de la
+        // creación) es el único que publica BillingAccountCancelled.
+        await this.cancelAccount(correlationId, customerId, session, reason);
+      },
+    );
   }
 
   private async cancelAccount(
     activationId: string,
     customerId: string,
+    session: ClientSession | undefined,
     reason: string,
   ): Promise<void> {
     const cancelled = await this.billingAccountModel
@@ -122,7 +160,7 @@ export class BillingService {
             updatedAt: new Date(),
           },
         },
-        { new: true },
+        { new: true, session },
       )
       .lean()
       .exec();

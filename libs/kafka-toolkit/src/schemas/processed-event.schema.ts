@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 
+export type ProcessedEventDocument = ProcessedEvent & Document;
+
 @Schema({ collection: 'processed_events' })
 export class ProcessedEvent {
   @Prop({ type: String, required: true })
@@ -14,6 +16,3 @@ export class ProcessedEvent {
 }
 
 export const ProcessedEventSchema = SchemaFactory.createForClass(ProcessedEvent);
-
-// Índice para búsqueda rápida por eventId
-ProcessedEventSchema.index({ eventId: 1 }, { unique: true });
