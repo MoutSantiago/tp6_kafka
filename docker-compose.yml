@@ -84,6 +84,136 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8025 > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - kafka-network
+
+  activation-api:
+    build:
+      context: .
+      dockerfile: apps/activation-api/Dockerfile
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: activation-api
+      KAFKA_GROUP_ID: activation-api
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: activation_db
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
+    networks:
+      - kafka-network
+
+  billing-service:
+    build:
+      context: .
+      dockerfile: apps/billing-service/Dockerfile
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: billing-service
+      KAFKA_GROUP_ID: billing-svc
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: billing_db
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
+    networks:
+      - kafka-network
+
+  provisioning-service:
+    build:
+      context: .
+      dockerfile: apps/provisioning-service/Dockerfile
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: provisioning-service
+      KAFKA_GROUP_ID: provisioning-svc
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: provisioning_db
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
+    networks:
+      - kafka-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: apps/notification-service/Dockerfile
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: notification-service
+      KAFKA_GROUP_ID: notification-svc
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: notification_db
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_FROM: activaciones@poc.local
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
+      mailhog:
+        condition: service_healthy
+    networks:
+      - kafka-network
+
+  crm-analytics-service:
+    build:
+      context: .
+      dockerfile: apps/crm-analytics-service/Dockerfile
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: crm-analytics-service
+      KAFKA_GROUP_ID: crm-analytics
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: crm_db
+      PORT: "3004"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      mongo:
+        condition: service_healthy
+    networks:
+      - kafka-network
+
+  demo-ui:
+    build:
+      context: .
+      dockerfile: apps/demo-ui/Dockerfile
+      args:
+        # El navegador corre en el host: el endpoint es localhost:3000
+        VITE_API_URL: http://localhost:3000
+    ports:
+      - "5173:80"
+    depends_on:
+      activation-api:
+        condition: service_started
     networks:
       - kafka-network
 
