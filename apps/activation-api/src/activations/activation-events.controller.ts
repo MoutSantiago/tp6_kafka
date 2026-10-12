@@ -10,6 +10,7 @@ import {
 } from '@activation-poc/kafka-toolkit';
 import type {
   BillingAccountCreatedEvent,
+  BillingAccountCancelledEvent,
   BillingFailedEvent,
   ProvisioningCompletedEvent,
   ProvisioningFailedEvent,
@@ -31,7 +32,7 @@ export class ActivationEventsController {
 
   @EventPattern(TOPICS.BILLING_EVENTS)
   async handleBillingEvent(
-    @Payload() event: BillingAccountCreatedEvent | BillingFailedEvent,
+    @Payload() event: BillingAccountCreatedEvent | BillingFailedEvent | BillingAccountCancelledEvent,
     @Ctx() context: KafkaContext,
   ): Promise<void> {
     await this.dlq.run(
@@ -42,6 +43,8 @@ export class ActivationEventsController {
           await this.activationsService.handleBillingAccountCreated(event as BillingAccountCreatedEvent);
         } else if (event.eventType === EVENT_TYPES.BILLING_FAILED) {
           await this.activationsService.handleBillingFailed(event as BillingFailedEvent);
+        } else if (event.eventType === EVENT_TYPES.BILLING_ACCOUNT_CANCELLED) {
+          await this.activationsService.handleBillingAccountCancelled(event as BillingAccountCancelledEvent);
         }
       },
     );

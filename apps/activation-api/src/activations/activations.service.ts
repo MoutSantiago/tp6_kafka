@@ -9,6 +9,7 @@ import { ActivationsGateway } from './activations.gateway';
 import { consumeIdempotently, ProcessedEvent, ProcessedEventDocument } from '@activation-poc/kafka-toolkit';
 import type {
   BillingAccountCreatedEvent,
+  BillingAccountCancelledEvent,
   BillingFailedEvent,
   ProvisioningCompletedEvent,
   ProvisioningFailedEvent,
@@ -87,6 +88,47 @@ export class ActivationsService {
         eventType: event.eventType,
         details: { accountId: event.payload.accountId },
       },
+    });
+  }
+
+  async handleBillingAccountCancelled(event: BillingAccountCancelledEvent): Promise<void> {
+    // La compensación no cambia el estado de la saga (ya está terminal) pero SÍ
+    // queda registrada en el history y se emite por WebSocket (RF-08: la timeline
+    // muestra cada evento de la activación).
+    const now = new Date().toISOString();
+    const outcome = await consumeIdempotently(
+      this.processedEventModel,
+      event.eventId,
+      async (session) => {
+        return this.activationModel
+          .findOneAndUpdate(
+            { _id: event.correlationId },
+            {
+              $push: {
+                history: {
+                  eventType: event.eventType,
+                  at: now,
+                  details: { accountId: event.payload.accountId, reason: event.payload.reason },
+                },
+              },
+              $set: { updatedAt: now },
+            },
+            { new: true, session },
+          )
+          .lean()
+          .exec();
+      },
+    );
+
+    if (outcome.result === 'duplicate' || !outcome.value) {
+      return;
+    }
+
+    this.gateway.emitActivationEvent({
+      activationId: event.correlationId,
+      eventType: event.eventType,
+      at: now,
+      status: outcome.value.status,
     });
   }
 
