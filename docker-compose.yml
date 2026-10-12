@@ -71,11 +71,16 @@ services:
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --eval \"rs.status().ok || rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]})\" --quiet"]
+      # Inicializa el replica set si no existe y solo reporta healthy cuando
+      # el nodo es PRIMARY. rs.status() lanza excepción si no hay config, así que
+      # se captura y se corre rs.initiate() en ese caso.
+      test: >
+        mongosh --quiet --eval "try { if (rs.status().myState !== 1) { quit(1); } }
+        catch (e) { try { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongo:27017'}]}); } catch (e2) {} quit(1); }"
       interval: 10s
       timeout: 10s
-      retries: 10
-      start_period: 20s
+      retries: 30
+      start_period: 30s
     networks:
       - kafka-network
 
@@ -199,6 +204,25 @@ services:
         condition: service_completed_successfully
       mongo:
         condition: service_healthy
+    networks:
+      - kafka-network
+
+  # Escenario 5: consumidor extra para loyalty; se levanta solo con el profile.
+  # Consume desde el inicio del topic (auto.offset.reset=earliest) y solo loguea.
+  loyalty-service:
+    profiles: ["loyalty"]
+    build:
+      context: .
+      dockerfile: apps/loyalty-service/Dockerfile
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLIENT_ID: loyalty-service
+      KAFKA_GROUP_ID: loyalty-svc
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - kafka-network
 
